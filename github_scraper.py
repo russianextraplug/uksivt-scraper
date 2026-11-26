@@ -3,7 +3,6 @@ import json
 import re
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
-from playwright_stealth import Stealth
 
 GROUP_ID = "63"
 URL = f"https://schedule.uksivt.ru/public?id={GROUP_ID}&mode=group&semester=1"
@@ -116,16 +115,20 @@ def parse_schedule(html):
 
 async def main():
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        # Запускаем в ВИДИМОМ режиме (headless=False)
+        browser = await p.chromium.launch(
+            headless=False, 
+            args=["--no-sandbox", "--disable-setuid-sandbox"]
+        )
         page = await browser.new_page()
         
-        await Stealth().apply_stealth_async(page)
-        
+        # Устанавливаем реалистичный User-Agent
         await page.set_extra_http_headers({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         })
 
         print("Открываю страницу...")
+        # networkidle позволяет дождаться завершения всех сетевых запросов
         await page.goto(URL, wait_until="networkidle", timeout=60000)
 
         print("Ждем загрузки таблицы (до 30 секунд)...")
