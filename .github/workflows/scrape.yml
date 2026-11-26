@@ -9,17 +9,17 @@ jobs:
   scrape:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install playwright beautifulsoup4 && playwright install chromium
       - run: python github_scraper.py
       
-      # Если скрипт упал, сохраняем HTML для отладки
+      # Сохраняем HTML для отладки, если скрипт упал (обновлено до v4)
       - name: Upload Debug HTML
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: debug-html
           path: debug.html
