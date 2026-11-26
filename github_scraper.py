@@ -3,6 +3,7 @@ import json
 import re
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
+from playwright_stealth import Stealth  # <-- Новый импорт
 
 GROUP_ID = "63"
 URL = f"https://schedule.uksivt.ru/public?id={GROUP_ID}&mode=group&semester=1"
@@ -115,24 +116,29 @@ def parse_schedule(html):
 
 async def main():
     async with async_playwright() as p:
-        # Изменено обратно на headless=True для работы на сервере без графического интерфейса
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
-
-        # Скрываем, что мы робот
-        await page.add_init_script(
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-        )
+        
+        # 1. Применяем маскировку для обхода защиты от ботов
+        await Stealth().apply_stealth_async(page) 
+        
+        # 2. Устанавливаем реалистичный User-Agent
+        await page.set_extra_http_headers({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        })
 
         print("Открываю страницу...")
-        await page.goto(URL, wait_until="domcontentloaded", timeout=60000)
+        # 3. Используем networkidle, чтобы дождаться всех запросов сайта
+        await page.goto(URL, wait_until="networkidle", timeout=60000)
 
-        print("Ждем загрузки таблицы (до 20 секунд)...")
+        print("Ждем загрузки таблицы (до 30 секунд)...")
         try:
-            await page.wait_for_selector("table", timeout=20000)
+            # 4. Увеличиваем таймаут ожидания таблицы
+            await page.wait_for_selector("table", timeout=30000) 
             print("Таблица успешно загружена!")
         except Exception as e:
             print(f"⚠️ Таблица не появилась: {e}")
+            # Сохраняем HTML для отладки, если таблица так и не появилась
             with open("debug.html", "w", encoding="utf-8") as f:
                 f.write(await page.content())
             await browser.close()
