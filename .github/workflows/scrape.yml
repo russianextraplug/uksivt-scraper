@@ -14,10 +14,20 @@ jobs:
         with:
           python-version: '3.11'
           
-      - run: pip install playwright beautifulsoup4 playwright-stealth && playwright install chromium
+      # Устанавливаем системные зависимости, включая Xvfb для виртуального экрана
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          pip install playwright beautifulsoup4
+          playwright install chromium
       
-      - run: python github_scraper.py
+      # Запускаем скрипт через xvfb-run
+      - name: Run scraper
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python github_scraper.py
       
+      # Сохраняем HTML для отладки, если скрипт упал
       - name: Upload Debug HTML
         if: failure()
         uses: actions/upload-artifact@v4
