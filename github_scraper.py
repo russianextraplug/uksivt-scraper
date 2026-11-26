@@ -115,9 +115,8 @@ def parse_schedule(html):
 
 async def main():
     async with async_playwright() as p:
-        # ВАЖНО: headless=False — запускаем «видимый» браузер,
-        # чтобы обойти защиту сайта от ботов
-        browser = await p.chromium.launch(headless=False)
+        # Изменено обратно на headless=True для работы на сервере без графического интерфейса
+        browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
 
         # Скрываем, что мы робот
