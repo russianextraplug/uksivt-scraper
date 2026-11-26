@@ -2,7 +2,7 @@ import asyncio
 import json
 import re
 from bs4 import BeautifulSoup
-from curl_cffi import requests as curl_requests
+from playwright.async_api import async_playwright
 
 GROUP_ID = "63"
 URL = f"https://schedule.uksivt.ru/public?id={GROUP_ID}&mode=group&semester=1"
@@ -113,42 +113,45 @@ def parse_schedule(html):
     return {"days": days_data, "group": "25ВЕБ-3"}
 
 
-def main():
-    # Создаем сессию, которая имитирует TLS-отпечаток Chrome
-    session = curl_requests.Session(impersonate="chrome120")
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
-    }
-    session.headers.update(headers)
+async def main():
+    async with async_playwright() as p:
+        # Запускаем в видимом режиме, xvfb создаст для него виртуальный экран
+        browser = await p.chromium.launch(
+            headless=False,
+            args=["--no-sandbox", "--disable-setuid-sandbox"]
+        )
+        page = await browser.new_page()
+        
+        # Маскируем автоматизацию
+        await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        await page.set_extra_http_headers({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        })
 
-    print("Открываю страницу...")
-    try:
-        # "Прогреваем" сессию, заходя на главную страницу, чтобы получить куки
-        session.get("https://schedule.uksivt.ru/", timeout=30)
-        
-        # Запрашиваем нужную страницу с расписанием
-        response = session.get(URL, timeout=30)
-        
-        if response.status_code != 200:
-            print(f"⚠️ Сервер вернул статус {response.status_code}")
+        print("Открываю страницу...")
+        await page.goto(URL, wait_until="networkidle", timeout=60000)
+
+        print("Ждем загрузки таблицы (до 30 секунд)...")
+        try:
+            await page.wait_for_selector("table", timeout=30000)
+            print("Таблица успешно загружена!")
+        except Exception as e:
+            print(f"⚠️ Таблица не появилась: {e}")
+            # Сохраняем HTML для отладки
             with open("debug.html", "w", encoding="utf-8") as f:
-                f.write(response.text)
-            raise RuntimeError("Сайт заблокировал запрос")
+                f.write(await page.content())
+            await browser.close()
+            raise e
 
-        print("Страница успешно загружена!")
-        data = parse_schedule(response.text)
-        
+        html = await page.content()
+        await browser.close()
+
+        data = parse_schedule(html)
+
         with open("cache.json", "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         print("Успешно сохранено в cache.json!")
 
-    except Exception as e:
-        print(f"⚠️ Ошибка: {e}")
-        raise e
-
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
