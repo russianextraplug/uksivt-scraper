@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          
+
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -23,24 +23,50 @@ jobs:
           patchright install chromium
           # Устанавливаем системные зависимости для браузера
           patchright install-deps
-      
+
       - name: Run scraper
         run: |
           # Запускаем в виртуальном дисплее. Это критически важно для обхода Cloudflare.
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python github_scraper.py
-      
+
       - name: Upload Debug HTML
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: debug-html
           path: debug.html
-          
+          if-no-files-found: ignore
+
       - name: Commit and push changes
         if: success()
         run: |
           git config --global user.name 'GitHub Action'
           git config --global user.email "action@github.com"
           git add cache.json
-          git diff --quiet && git diff --staged --quiet || git commit -m "Auto-update schedule"
-          git push
+          if git diff --staged --quiet; then
+            echo "Нет изменений — коммит не нужен"
+          else
+            git commit -m "Auto-update schedule"
+            git push
+          fi
+
+  keepalive:
+    runs-on: ubuntu-latest
+    # Запускается раз в неделю (воскресенье 00:00 UTC) — держит репозиторий активным,
+    # чтобы GitHub не отключил расписание после 60 дней без коммитов.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Empty commit
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email "action@github.com"
+          # Коммитим пустой коммит только по воскресеньям (cron '0 * * * *' идёт каждый час,
+          # поэтому проверяем день недели)
+          if [ "$(date -u +%u)" = "7" ] && [ "$(date -u +%H)" = "00" ]; then
+            git commit --allow-empty -m "Keepalive: prevent workflow auto-disable"
+            git push
+          else
+            echo "Не воскресенье 00:00 UTC — пропускаем keepalive"
+          fi
