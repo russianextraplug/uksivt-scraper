@@ -13,10 +13,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install playwright beautifulsoup4 && playwright install chromium
+          
+      - run: pip install playwright beautifulsoup4 playwright-stealth && playwright install chromium
+      
       - run: python github_scraper.py
       
-      # Сохраняем HTML для отладки, если скрипт упал (обновлено до v4)
       - name: Upload Debug HTML
         if: failure()
         uses: actions/upload-artifact@v4
