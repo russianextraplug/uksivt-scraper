@@ -2,7 +2,7 @@ import asyncio
 import json
 import re
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright
+from curl_cffi import requests as curl_requests
 
 GROUP_ID = "63"
 URL = f"https://schedule.uksivt.ru/public?id={GROUP_ID}&mode=group&semester=1"
@@ -113,44 +113,42 @@ def parse_schedule(html):
     return {"days": days_data, "group": "25ВЕБ-3"}
 
 
-async def main():
-    async with async_playwright() as p:
-        # Запускаем в ВИДИМОМ режиме (headless=False)
-        browser = await p.chromium.launch(
-            headless=False, 
-            args=["--no-sandbox", "--disable-setuid-sandbox"]
-        )
-        page = await browser.new_page()
+def main():
+    # Создаем сессию, которая имитирует TLS-отпечаток Chrome
+    session = curl_requests.Session(impersonate="chrome120")
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+    }
+    session.headers.update(headers)
+
+    print("Открываю страницу...")
+    try:
+        # "Прогреваем" сессию, заходя на главную страницу, чтобы получить куки
+        session.get("https://schedule.uksivt.ru/", timeout=30)
         
-        # Устанавливаем реалистичный User-Agent
-        await page.set_extra_http_headers({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        })
-
-        print("Открываю страницу...")
-        # networkidle позволяет дождаться завершения всех сетевых запросов
-        await page.goto(URL, wait_until="networkidle", timeout=60000)
-
-        print("Ждем загрузки таблицы (до 30 секунд)...")
-        try:
-            await page.wait_for_selector("table", timeout=30000)
-            print("Таблица успешно загружена!")
-        except Exception as e:
-            print(f"⚠️ Таблица не появилась: {e}")
+        # Запрашиваем нужную страницу с расписанием
+        response = session.get(URL, timeout=30)
+        
+        if response.status_code != 200:
+            print(f"⚠️ Сервер вернул статус {response.status_code}")
             with open("debug.html", "w", encoding="utf-8") as f:
-                f.write(await page.content())
-            await browser.close()
-            raise e
+                f.write(response.text)
+            raise RuntimeError("Сайт заблокировал запрос")
 
-        html = await page.content()
-        await browser.close()
-
-        data = parse_schedule(html)
-
+        print("Страница успешно загружена!")
+        data = parse_schedule(response.text)
+        
         with open("cache.json", "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         print("Успешно сохранено в cache.json!")
 
+    except Exception as e:
+        print(f"⚠️ Ошибка: {e}")
+        raise e
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
